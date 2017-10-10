@@ -1,0 +1,325 @@
+ ---
+title: "connect"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+rm(list = ls(all=TRUE))
+```
+
+
+
+```{r}
+setwd("C:/Users/prithvi/Desktop/connect")
+connect_data=read.csv("connect-4.csv")
+```
+
+```{r}
+str(connect_data)
+```
+
+```{r}
+summary(connect_data)
+```
+
+```{r}
+sum(is.na(connect_data))
+
+```
+
+```{r}
+dim(connect_data)
+```
+
+
+
+```{r}
+head(connect_data)
+tail(connect_data)
+```
+
+
+
+
+```{r}
+result=connect_data$win
+connect_data1=cbind(connect_data,result)
+connect_data1$win=NULL
+
+```
+
+
+
+```{r}
+library(dummies)
+connect_data2=dummy.data.frame(connect_data1[,-43])
+str(connect_data2)
+```
+```{r}
+connect_data3=cbind(connect_data2,result)
+```
+```{r}
+pca_data <- prcomp(connect_data3[,-127], scale = F)
+summary(pca_data)
+```
+```{r}
+connect_data3_pca <- as.data.frame(predict(pca_data, connect_data3))[1:55]
+result_pca=connect_data3$result
+connect_data3_pca=cbind(connect_data3_pca,result_pca)
+
+```
+
+```{r}
+library(caret)
+set.seed(123)
+train_rows <- createDataPartition(connect_data3_pca$result_pca, p = 0.7, list = F)
+
+train_data <- connect_data3_pca[train_rows,]
+
+test_data <-connect_data3_pca[-train_rows,]
+str(train_data)
+
+ 
+```
+
+```{r}
+table(train_data$result_pca)
+
+train1<-train_data[train_data$result_pca=='win'|train_data$result_pca=='draw',]
+
+```
+
+```{r}
+table(train1$result_pca)
+train1$result_pca<-factor(train1$result_pca)
+```
+```{r}
+library(DMwR)
+attach(train1)
+smote_data1=SMOTE(result_pca  ~.,train1,perc.over =400 ,k=5,perc.under = 100,learner = NULL)
+table(smote_data1$result_pca)
+```
+```{r}
+train2<-train_data[train_data$result_pca=='win'|train_data$result_pca=='loss',]
+train2$result_pca<-factor(train2$result_pca)
+table(train2$result_pca)
+```
+
+```{r}
+library(DMwR)
+attach(train2)
+smote_data2=SMOTE(result_pca  ~.,train2,perc.over =150 ,k=5,perc.under = 100,learner = NULL)
+table(smote_data2$result_pca)
+
+```
+
+
+```{r}
+
+smote_data<-rbind(smote_data1,smote_data2[smote_data2$result_pca=='loss',])
+
+```
+
+
+```{r}
+#library(DMwR)
+#attach(train_data)
+#smote_data=SMOTE(result_pca  ~.,train_data,perc.over =400 ,k=5,perc.under = 100,learner = NULL)
+table(smote_data$result_pca)
+```
+
+```{r}
+summary(smote_data)
+```
+
+##DECISION TREE C5
+```{r}
+library(C50)
+C5_tree=C5.0(result_pca ~ .,smote_data)
+
+```
+
+```{r}
+C5_rules=C5.0(result_pca ~ .,smote_data,rules=T)
+
+```
+
+```{r}
+C5imp(C5_tree,metric = "usage")
+```
+
+```{r}
+
+```
+
+```{r}
+library(C50)
+fit <- C5.0(result_pca ~ ., data = smote_data,method="class")
+
+```
+
+```{r}
+preds=predict(fit,test_data)
+
+```
+
+```{r}
+library(caret)
+library(e1071)
+confusionMatrix(preds,test_data$result_pca)
+preds1=predict(fit,smote_data)
+confusionMatrix(preds1,smote_data$result_pca)
+```
+
+
+##RANDOM FOREST
+```{r}
+
+library(randomForest)
+model_rf = randomForest(result_pca ~ . ,smote_data)
+importance(model_rf)
+varImpPlot(model_rf)
+preds_rf =predict(model_rf,test_data)
+
+confusionMatrix(preds_rf, test_data$result_pca)
+preds_train_rf= predict(model_rf,smote_data)
+confusionMatrix(preds_train_rf,smote_data$result_pca)
+
+
+```
+##Linear SVM
+```{r}
+ 
+library(e1071)
+
+model_svm <- svm(result_pca ~ . , smote_data, kernel = "linear")
+
+summary(model_svm)
+preds_svm <- predict(model_svm, test_data)
+
+confusionMatrix(preds_svm, test_data$result_pca)
+preds_train_svm <- predict(model_svm,smote_data)
+confusionMatrix(preds_train_svm,smote_data$result_pca)
+
+
+
+
+```
+## Tanhdot kernel SVM
+```{r}
+library(kernlab)
+model_svm_th <- ksvm(result_pca ~ . , smote_data, kernel = "tanhdot")
+preds_svm_th <- predict(model_svm_th, test_data)
+
+confusionMatrix(preds_svm_th, test_data$result_pca)
+preds_train_svm_th <- predict(model_svm_th,smote_data)
+confusionMatrix(preds_train_svm_th,smote_data$result_pca)
+
+```
+##SVM ANOVA
+```{r}
+model_svm_an <- ksvm(result_pca ~ . , train_data, kernel = "anovadot")
+##  Setting default kernel parameters
+preds_svm_an <- predict(model_svm_an, test_data)
+
+confusionMatrix(preds_svm_an, test_data$result_pca)
+preds_train_svm_an <- predict(model_svm_th,smote_data)
+confusionMatrix(preds_train_svm_an, smote_data$result_pca)
+
+```
+##tahndot
+```{r}
+model_svm_th=ksvm(result ~.,smote_data,kernel="tanhdot")
+summary(model_svm_th)
+preds_svm_th=predict(model_svm_th,test_data)
+confusionMatrix(preds_svm_th,test_data$result)
+preds_train_svm_th=predict(model_svm_th,smote_data)
+confusionMatrix(preds_train_svm_th,smote_data$result)
+```
+
+
+
+## Decision Trees CART
+```{r}
+
+library(rpart)
+
+model_dt <- rpart(result_pca ~ . , smote_data)
+preds_dt <- predict(model_dt, test_data)
+
+preds_tree <- ifelse(preds_dt[, 1] > preds_dt[, 2]&preds_dt[,1]>preds_dt[,3],"win" , ifelse(preds_dt[,2]>preds_dt[,1]&preds_dt[,2]>preds_dt[,3] ,"draw" , "loss"))
+
+confusionMatrix(preds_tree, test_data$result_pca)
+preds_train_dt <- predict(model_dt,smote_data)
+
+preds_train_tree <- ifelse(preds_train_dt[, 1] > preds_train_dt[, 2]&preds_train_dt[,1]>preds_train_dt[,3],"win" , ifelse(preds_train_dt[,2]>preds_train_dt[,1]&preds_train_dt[,2]>preds_train_dt[,3] ,"draw" , "loss"))
+
+confusionMatrix (preds_train_tree,smote_data$result_pca)
+
+
+```
+
+
+```{r}
+
+
+```
+##knn
+```{r}
+model_knn <- knn3(result_pca ~ . , smote_data, k = 5)
+
+preds_k <- predict(model_knn, test_data)
+preds_knn <- ifelse(preds_k[, 1] > preds_k[, 2]&preds_k[,1]>preds_k[,3],"win" , ifelse(preds_k[,2]>preds_dt[,1]&preds_k[,2]>preds_k[,3] ,"draw" , "loss"))
+
+confusionMatrix(preds_knn, test_data$result_pca)
+preds_train_k <- predict(model_knn, smote_data)
+
+preds_train_knn <- ifelse(preds_train_k[, 1] > preds_train_k[, 2]&preds_train_k[,1]>preds_train_k[,3],"win" , ifelse(preds_train_k[,2]>preds_train_k[,1]&preds_train_k[,2]>preds_train_k[,3] ,"draw" , "loss"))
+
+confusionMatrix(preds_train_knn,smote_data$result_pca)
+
+```
+## Bagged Decision Trees
+
+```{r}
+library(ipred)
+set.seed(1234)
+
+model_tree_bag <- bagging(result_pca ~ . , data=smote_data, control = rpart.control(cp = 0.01, xval = 10))
+preds_tree_bag <- predict(model_tree_bag, test_data)
+
+confusionMatrix(preds_tree_bag, test_data$result_pca)
+preds_train_tree_bag <- predict(model_tree_bag,smote_data)
+confusionMatrix(preds_train_tree_bag,smote_data$result_pca)
+```
+## navie bayes
+
+```{r}
+library(e1071)
+model_nb<-naiveBayes(result_pca~.,smote_data)
+preds_nb <- predict(model_nb, test_data)
+preds_train_nb<-predict(model_nb,smote_data)
+
+confusionMatrix(preds_nb, test_data$result_pca)
+
+confusionMatrix(preds_train_nb, smote_data$result_pca)
+
+
+```
+
+
+
+```{r}
+
+```
+ 
+```{r}
+
+
+
+```
+
