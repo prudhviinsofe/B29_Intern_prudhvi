@@ -1,0 +1,310 @@
+---
+title: "boruta"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+rm(list = ls(all=TRUE))
+setwd("C:/Users/prithvi/Desktop/connect")
+smote_data=read.csv("file:///C:/Users/prithvi/Desktop/connect/smote_data1.csv")
+test_data=read.csv("file:///C:/Users/prithvi/Desktop/connect/test_data.csv")
+```
+
+```{r}
+library(doParallel)
+library(Boruta)
+```
+
+```{r}
+install.packages("Boruta")
+library(Boruta)
+library(caret)
+
+data_balanced_both <- Boruta(result ~ ., data = smote_data, doTrace = 2)
+ print(smote_data)
+ 
+ control <- rfeControl(functions=rfFuncs, method="cv", number=10)
+ 
+ rfe.train <- rfe(smote_data[,2:19], smote_data[,128], sizes=1:128, rfeControl=control)
+
+  rfe.train
+  
+  data_balanced_both = rfe.train
+  
+  plot(rfe.train, type=c("g", "o"), cex = 1.0, col = 1:128)
+```
+
+```{r}
+smote_data_b=c("bo","b.5o","b.4o","b1o","b.3o")
+smote_data_new<-subset(smote_data,select = c(bo,b.5o,b.4o,b.1o,b.3o)) 
+result=smote_data$result
+newdata=cbind(smote_data_new,result)
+```
+##random forest
+```{r}
+library(caret)
+library(randomForest)
+model_rf = randomForest(result ~ . ,newdata,ntress=1500)
+importance(model_rf)
+varImpPlot(model_rf)
+preds_rf =predict(model_rf,test_data)
+
+
+confusionMatrix(preds_rf, test_data$result)
+preds_train_rf= predict(model_rf,newdata)
+confusionMatrix(preds_train_rf,newdata$result)
+write.csv(preds_rf,file = "rf_test.csv")
+write.csv(preds_train_rf,file="rf_train.csv")
+
+ctrl <- trainControl(method="repeatedcv",repeats = 3)
+#rf.grid <- expand.grid(.mtry=7:20)
+#model_rfval<-train(X1~.,data=train_datanew1,method='rf',trControl=ctrl,tuneLength=3,tuneGrid=rf.grid)
+rf.grid <- expand.grid(.mtry=7)
+model_rfval<-train(result~.,data=newdata,method='rf',trControl=ctrl,tuneLength=3,tuneGrid=rf.grid)
+
+```
+##linear svm
+```{r}
+library(e1071)
+
+model_svm <- svm(result ~ . , newdata, kernel = "linear")
+
+summary(model_svm)
+preds_svm <- predict(model_svm, test_data)
+
+confusionMatrix(preds_svm, test_data$result)
+preds_train_svm <- predict(model_svm,newdata)
+confusionMatrix(preds_train_svm,newdata$result)
+write.csv(preds_svm,file = "svm_test.csv")
+write.csv(preds_train_svm,file = "svm_train.csv")
+```
+##thandot
+```{r}
+library(kernlab)
+model_svm_th <- ksvm(result ~ . , newdata, kernel = "tanhdot")
+preds_svm_th <- predict(model_svm_th, test_data)
+
+confusionMatrix(preds_svm_th, test_data$result)
+preds_train_svm_th <- predict(model_svm_th,newdata)
+confusionMatrix(preds_train_svm_th,newdata$result )
+write.csv(preds_svm_th,file = "th_test.csv")
+write.csv(preds_train_svm_th,file="th_train.csv")
+```
+##cart
+```{r}
+
+library(rpart)
+library(caret)
+
+model_dt <- rpart(result ~ . , newdata)
+preds_dt <- predict(model_dt, test_data)
+
+preds_tree <- ifelse(preds_dt[, 1] > preds_dt[, 2]&preds_dt[,1]>preds_dt[,3],"win" , ifelse(preds_dt[,2]>preds_dt[,1]&preds_dt[,2]>preds_dt[,3] ,"draw" , "loss"))
+
+confusionMatrix(preds_tree, test_data$result)
+preds_train_dt <- predict(model_dt,newdata)
+
+preds_train_tree <- ifelse(preds_train_dt[, 1] > preds_train_dt[, 2]&preds_train_dt[,1]>preds_train_dt[,3],"win" , ifelse(preds_train_dt[,2]>preds_train_dt[,1]&preds_train_dt[,2]>preds_train_dt[,3] ,"draw" , "loss"))
+
+confusionMatrix (preds_train_tree,newdata$result)
+write.csv(preds_tree,file = "cart_test.csv")
+write.csv(preds_train_tree,file="cart_train.csv")
+```
+##knn
+```{r}
+library(caret)
+model_knn <- knn3(result ~ . , newdata, k = 9,use.all=F,l=4)
+model_knn
+
+
+ctrl <- trainControl(method="repeatedcv",repeats = 40)
+knn3.grid <- expand.grid(.cp=seq(0.01,.2,.01))
+model_knncross<-train(result~.,data=newdata,method='knn',  tuneGrid=expand.grid(.k=1:9),trControl=fitControl,tuneLength=3)
+
+preds_k <- predict(model_knn, test_data)
+preds_knn <- ifelse(preds_k[, 1] > preds_k[, 2]&preds_k[,1]>preds_k[,3],"win" ,ifelse(preds_k[,2]>preds_k[,1]&preds_k[,2]>preds_k[,3] ,"draw" , "loss"))
+
+confusionMatrix(preds_knn, test_data$result)
+preds_train_k <- predict(model_knn, newdata)
+
+preds_train_knn <- ifelse(preds_train_k[, 1] > preds_train_k[, 2]&preds_train_k[,1]>preds_train_k[,3],"win" , ifelse(preds_train_k[,2]>preds_train_k[,1]&preds_train_k[,2]>preds_train_k[,3] ,"draw" , "loss"))
+
+confusionMatrix(preds_train_knn,newdata$result)
+
+```
+##bagged decision trees
+```{r}
+library(rpart)
+library(ipred)
+set.seed(1234)
+
+model_tree_bag <- bagging(result ~ . , data=newdata, control = rpart.control(cp = 0.01, xval = 10))
+preds_tree_bag <- predict(model_tree_bag, test_data)
+
+confusionMatrix(preds_tree_bag, test_data$result)
+preds_train_tree_bag <- predict(model_tree_bag,newdata)
+confusionMatrix(preds_train_tree_bag,newdata$result)
+write.csv(preds_tree_bag,file = "bdt_test.csv")
+write.csv(preds_train_tree_bag,file = "bdt_train.csv")
+```
+##navie bayes
+```{r}
+library(e1071)
+model_nb<-naiveBayes(result~.,newdata)
+preds_nb <- predict(model_nb, test_data)
+preds_train_nb<-predict(model_nb,newdata)
+
+confusionMatrix(preds_nb, test_data$result)
+
+confusionMatrix(preds_train_nb, newdata$result)
+write.csv(preds_nb,file = "nb_test.csv")
+write.csv(preds_train_nb,file = "nb_train.csv")
+```
+##ann
+```{r}
+library(neuralnet)
+library(mxnet)
+library(caret)
+set.seed(1234)
+intrain = createDataPartition(y = newdata$result, p=0.7, list = F)
+train.x = data.matrix(newdata[intrain, -6])
+train.y = newdata[intrain, 6]
+test.x = data.matrix(newdata[-intrain, -6])
+test.y = newdata[-intrain, 6]
+
+mx.set.seed(0)
+Sys.time() -> start
+model <- mx.mlp(train.x, train.y, hidden_node=c(10), out_node=2, activation="tanh", out_activation="softmax",
+                 num.round=20, array.batch.size=100, learning.rate=0.07, momentum=0.9,
+                 eval.metric=mx.metric.accuracy)
+ Sys.time() -> end
+ paste(end - start)
+ 
+preds = predict(model, train.x)
+
+preds=t(preds)
+pred.label = ifelse(preds[,2]<0.55, 0, 1)
+
+conf.mat = table(pred.label, train.y);conf.mat
+accuracy = sum(diag(conf.mat))/sum(conf.mat);accuracy
+precision = conf.mat[2,2]/sum(conf.mat[2,]);precision
+recall = conf.mat[2,2]/sum(conf.mat[,2]);recall
+
+table(test.y)
+```
+##bagging
+```{r}
+library(rpart)
+library(ipred)
+
+set.seed(1234)
+
+model_bag <- bagging(result ~ . , data=newdata, control = rpart.control(cp = 0.01, xval = 10))
+preds_bag <- predict(model_tree_bag, test_data)
+
+confusionMatrix(preds_bag, test_data$result)
+preds_train_bag <- predict(model_bag,newdata)
+confusionMatrix(preds_train_bag,newdata$result)
+```
+##c5
+```{r}
+library(C50)
+C5_tree=C5.0(result ~ .,newdata)
+C5_rules=C5.0(result ~ .,newdata,rules=T)
+library(caret)
+library(e1071)
+preds=predict(C5_tree,test_data)
+confusionMatrix(preds,test_data$result)
+preds1=predict(C5_tree,newdata)
+confusionMatrix(preds1,newdata$result)
+write.csv(preds,file = "c5_test.csv")
+write.csv(preds1,file = "c5_train.csv")
+```
+##logistic
+```{r}
+library(glmnet)
+library(Matrix)
+
+reg <- model.matrix(newdata$result~., data = newdata)
+reg1 <- model.matrix(test_data$result~., data = test_data)
+
+ lm = cv.glmnet(reg,newdata$result,family = "multinomial",alpha =1)
+ lm$lambda.min
+ 
+ 
+log_reg<-glmnet(reg,newdata$result,family = "multinomial",alpha =0,lambda =lm$lambda.min)
+preds_test_lr <- predict(log_reg, reg1,type = "class")
+preds_train_lr<-predict(log_reg, reg,type = "class")
+
+confusionMatrix(preds_test_lr, test_data$result)
+
+confusionMatrix(preds_train_lr, newdata$result)
+
+```
+
+
+```{r}
+predDF <- data.frame(preds_rf,pred.ano,pred.tan,preds.c5, class = test.data$class)
+pred1V <- predict(model_rf, test.data)
+pred2V  <- predict(dt_fit, test.data)
+pred3v <- predict(model_svm.ano,test.data)
+pred4v<-predict(model.tanhdot,test.data)
+pred5v<-predict(c5_tree, test.data)
+predVD <- data.frame(pred.rf = pred1V, pred.dt = pred2V,pred.svm.ano=pred3v,pred.tanh=pred4v,pred.c5=pred5v)
+pred_test.svm <- predict(model_svm,test.data)
+accuracy <- rbind(confusionMatrix(pred1V, test.data$class)$overall[1],confusionMatrix(pred2V, test.data$class)$overall[1],confusionMatrix(test.data$class,pred_test.svm)$overall[1],confusionMatrix(pred.ano,test.data$class)$overall[1],confusionMatrix(pred.tan,test.data$class)$overall[1],confusionMatrix(preds.c5, test.data$class)$overall[1])
+row.names(accuracy) <- c("RF", "dt", "Stack","svmano","svmtan","c5")
+accuracy 
+dotplot(accuracy)
+```
+##xgboost
+```{r}
+library(vegan)
+library(dummies)
+library(xgboost)
+names(newdata)
+#dtrain = xgb.DMatrix(data = as.matrix(train.data[-8]), label =as.factor(train.data$class))
+#model = xgboost(data = dtrain, max.depth = 2, eta = 1, nthread = 2, nround = 2,objective = "binary:logistic", verbose = 1)
+
+xgmodel = xgboost(data = as.matrix(newdata[-6]), label = as.numeric(newdata$result), nrounds = 200)
+str(newdata)
+#testing on train data 
+y_pred = predict(xgmodel, newdata = as.matrix(newdata[-6]))
+table (newdata$result,ifelse(y_pred >= 1.5,1,0))
+#table(train.data$class)
+caret::confusionMatrix(newdata$result,ifelse(y_pred >= 1.5,1,0))
+
+#testing on test data 
+y_pred = predict(xgmodel, newdata = as.matrix(test_data[-6]))
+table (test_data$result,ifelse(y_pred >= 1.5,1,0))
+caret::confusionMatrix(test_data$result,ifelse(y_pred >= 1.5,1,0))
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+

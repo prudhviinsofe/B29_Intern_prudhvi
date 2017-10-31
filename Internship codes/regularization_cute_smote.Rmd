@@ -1,0 +1,258 @@
+---
+title: "lasso ridge"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+rm(list = ls(all=TRUE))
+```
+
+```{r}
+setwd("C:/Users/prithvi/Desktop/connect")
+connect_data=read.csv("connect-4.csv")
+```
+
+```{r}
+result=connect_data$win
+connect_data1=cbind(connect_data,result)
+connect_data1$win=NULL
+```
+
+```{r}
+library(dummies)
+connect_data2=dummy.data.frame(connect_data1[,-43])
+str(connect_data2)
+```
+
+```{r}
+connect_data3=cbind(connect_data2,result)
+```
+
+```{r}
+library(caret)
+set.seed(123)
+train_rows <- createDataPartition(connect_data3$result, p = 0.7, list = F)
+
+train_data <- connect_data3[train_rows,]
+
+test_data <-connect_data3[-train_rows,]
+str(train_data)
+```
+
+```{r}
+table(train_data$result)
+
+train1<-train_data[train_data$result=='win'|train_data$result=='draw',]
+
+```
+
+```{r}
+table(train1$result)
+train1$result<-factor(train1$result)
+```
+
+```{r}
+library(DMwR)
+attach(train1)
+smote_data1=SMOTE(result  ~.,train1,perc.over =400 ,k=5,perc.under = 100,learner = NULL)
+table(smote_data1$result)
+```
+
+```{r}
+train2<-train_data[train_data$result=='win'|train_data$result=='loss',]
+train2$result<-factor(train2$result)
+table(train2$result)
+```
+
+```{r}
+library(DMwR)
+attach(train2)
+smote_data2=SMOTE(result ~.,train2,perc.over =150 ,k=5,perc.under = 100,learner = NULL)
+table(smote_data2$result)
+```
+
+```{r}
+smote_data<-rbind(smote_data1,smote_data2[smote_data2$result=='loss',])
+write.csv(smote_data,file = "file:///C:/Users/prithvi/Desktop/connect/smote_data1.csv")
+wite.csv(test_data,file="file:///C:/Users/prithvi/Desktop/connect/test_data.csv")
+
+smote_data=read.csv("file:///C:/Users/prithvi/Desktop/connect/smote_data1.csv")
+test_data=read.csv("file:///C:/Users/prithvi/Desktop/connect/test_data.csv")
+```
+
+
+```{r}
+summary(smote_data)
+```
+#Lasso Model
+```{r}
+
+library(glmnet)
+x=model.matrix(smote_data$result~.,smote_data)
+head(x)
+fit.lasso <- glmnet(x, smote_data$result, family="multinomial", alpha=1)
+```
+## Plots for Different Lambda
+```{r}
+plot(fit.lasso,xvar="lambda",main="LASSO")
+```
+##Cross Validation for Lasso 
+```{r}
+fit.lasso.cv <- cv.glmnet(x,smote_data$result, type.measure="class", alpha=1, 
+                          family="multinomial",nfolds=10,parallel=TRUE)
+
+```
+## Predicting the Min Lambda
+```{r}
+x.train = model.matrix(smote_data$result~.,smote_data)
+pred.lasso.csv <- predict(fit.lasso.cv,x.train,s = fit.lasso.cv$lambda.min)
+
+plot(fit.lasso, xvar="lambda")
+```
+Perform the model with the lambda min choosen 
+```{r}
+fit.lasso.cv$lambda.min
+fit.lasso1 <- glmnet(x, smote_data$result, family="multinomial", alpha=1,type.multinomial = "grouped" ,lambda = fit.lasso.cv$lambda.min)
+
+
+```
+```{r}
+coef(fit.lasso1)
+
+
+```
+
+
+##Getting the Coefficnets for Lasso 
+```{r}
+c = coef(fit.lasso1,s=fit.lasso.cv$lambda.1se)
+  inds <- which(c$'c-CS-m'!=0)
+  imp_attributes_lasso <- row.names(c)[inds]
+  imp_attributes_lasso<- imp_attributes_lasso[-c(grep("Intercept",imp_attributes_lasso))]
+  imp_attributes_lasso
+  c
+```
+#Prediction on Lasso
+```{r}
+xtest<-model.matrix(test_data$result~.,test_data)
+pre1<-predict(fit.lasso1,xtest,type="class")
+
+
+```
+
+```{r}
+confusionMatrix(pre1,test_data$result)
+ytest<-test_data$result
+
+
+xtrain<-model.matrix(smote_data$result~.,smote_data)
+pre1<-predict(fit.lasso1,xtrain,type="class")
+confusionMatrix(pre1,smote_data$result)
+
+```
+
+##ridge
+```{r}
+fit.ridge <- glmnet(x, smote_data$result, family="multinomial", alpha=0)
+
+
+```
+##Cross Validated Model
+
+```{r}
+fit.ridge.cv <- cv.glmnet(x,smote_data$result, type.measure="mse", alpha=0, 
+                          family="multinomial",nfolds=10,parallel=TRUE)
+
+```
+Run the model taking the lambda min 
+
+```{r}
+plot(fit.ridge.cv)
+lasso <- fit.ridge.cv$lambda.min
+```
+##ridge coefficients
+```{r}
+c= coef(fit.ridge.cv,s=fit.ridge.cv$lambda.1se)
+inds <- which(c$`c-CS-m`!=0)
+  imp_attributes_ridge<- row.names(c$`c-CS-m`)[inds]
+  imp_attributes_ridge<-imp_attributes_ridge[-c(grep("Intercept",imp_attributes_ridge))]
+  imp_attributes_ridge
+
+```
+#Prediction on Ridge Regularization 
+
+```{r}
+xtest<-model.matrix(test_data$result~.,test_data)
+pre1<-predict(fit.ridge.cv,xtest,type="class")
+confusionMatrix(pre1,test_data$result)
+ytest<-test_data$result
+
+
+xtrain<-model.matrix(smote_data$result~.,smote_data)
+pre1<-predict(fit.ridge.cv,xtrain,type="class")
+confusionMatrix(pre1,smote_data$result)
+```
+##elastic.net
+```{r}
+fit.elastic <- glmnet(x, smote_data$result, family="multinomial", alpha=0.5)
+```
+##Cross Validated Model
+
+```{r}
+fit.elnet.cv <- cv.glmnet(x,smote_data$result, type.measure="mse", alpha=0.5, 
+                          family="multinomial",nfolds=10,parallel=TRUE)
+```
+Re Run the model with lambda min
+
+```{r}
+plot(fit.elnet.cv)
+elnet <- fit.elnet.cv$lambda.min
+
+```
+##Getting the Elastic Net attributes
+
+```{r}
+c= coef(fit.elnet.cv,s=fit.elnet.cv$lambda.1se)
+inds <- which(c$`c-CS-m`!=0)
+  imp_attributes_elnet<- row.names(c$`c-CS-m`)[inds]
+  imp_attributes_elnet<-imp_attributes_elnet[-c(grep("Intercept",imp_attributes_elnet))]
+  imp_attributes_elnet
+```
+#Prediction on Elastic Net Regression 
+
+```{r}
+xtest<-model.matrix(test_data$result~.,test_data)
+pre1<-predict(fit.elnet.cv,xtest,type="class")
+confusionMatrix(pre1,test_data$result)
+ytest<-test_data$result
+
+
+xtrain<-model.matrix(smote_data$result~.,smote_data)
+pre1<-predict(fit.elnet.cv,xtrain,type="class")
+confusionMatrix(pre1,smote_data$result)
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+
+
+
+

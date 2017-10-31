@@ -1,0 +1,248 @@
+---
+title: "Untitled"
+author: "rose"
+date: "24 October 2017"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+rm(list = ls(all=TRUE))
+
+```
+
+```{r}
+setwd("C:/Users/prithvi/Desktop/connect")
+train_data=read.csv("file:///C:/Users/prithvi/Desktop/connect/train_data.csv")
+test_data=read.csv("file:///C:/Users/prithvi/Desktop/connect/test_data.csv")
+```
+
+```{r}
+install.packages("ROSE")
+library(ROSE)
+table(train_data$result)
+
+train1<-train_data[train_data$result=='win'|train_data$result=='draw',]
+table(train1$result)
+train1$result<-factor(train1$result)
+
+attach(train1)
+
+rose_data1 <- ovun.sample(result ~ ., data = train1, method = "both", p=0.5,N=1809,seed = 123)$data
+
+table(rose_data1$result)
+
+train2<-train_data[train_data$result=='win'|train_data$result=='loss',]
+train2$result<-factor(train2$result)
+table(train2$result)
+attach(train2)
+rose_data2 <- ovun.sample(result ~ ., data = train2, method = "both", p=0.5,N=1809,seed = 123)$data
+table(rose_data2$result)
+
+rose_data<-rbind(rose_data1,rose_data2[rose_data2$result=='loss',])
+
+table(rose_data$result)
+write.csv(rose_data,file = "rose_data.csv")
+```
+##c5
+```{r}
+library(C50)
+C5_tree=C5.0(result ~ .,rose_data)
+C5_rules=C5.0(result ~ .,rose_data,rules=T)
+preds=predict(C5_tree,test_data)
+library(caret)
+library(e1071)
+confusionMatrix(preds,test_data$result)
+preds1=predict(C5_tree,rose_data)
+confusionMatrix(preds1,rose_data$result)
+```
+##random forest
+```{r}
+library(caret)
+library(randomForest)
+model_rf = randomForest(result ~ . ,rose_data,ntress=1500)
+importance(model_rf)
+varImpPlot(model_rf)
+preds_rf =predict(model_rf,test_data)
+
+
+confusionMatrix(preds_rf, test_data$result)
+preds_train_rf= predict(model_rf,rose_data)
+confusionMatrix(preds_train_rf,rose_data$result)
+```
+##svm linear
+```{r}
+library(e1071)
+
+model_svm <- svm(result ~ . , rose_data, kernel = "linear")
+
+summary(model_svm)
+preds_svm <- predict(model_svm, test_data)
+
+confusionMatrix(preds_svm, test_data$result)
+preds_train_svm <- predict(model_svm,rose_data)
+confusionMatrix(preds_train_svm,rose_data$result)
+```
+##than
+```{r}
+library(kernlab)
+model_svm_th <- ksvm(result ~ . , rose_data, kernel = "tanhdot")
+preds_svm_th <- predict(model_svm_th, test_data)
+
+confusionMatrix(preds_svm_th, test_data$result)
+preds_train_svm_th <- predict(model_svm_th,rose_data)
+confusionMatrix(preds_train_svm_th,rose_data$result)
+```
+##decision tree
+```{r}
+
+library(rpart)
+library(caret)
+
+model_dt <- rpart(result ~ . , rose_data)
+preds_dt <- predict(model_dt, test_data)
+
+preds_tree <- ifelse(preds_dt[, 1] > preds_dt[, 2]&preds_dt[,1]>preds_dt[,3],"win" , ifelse(preds_dt[,2]>preds_dt[,1]&preds_dt[,2]>preds_dt[,3] ,"draw" , "loss"))
+
+confusionMatrix(preds_tree, test_data$result)
+preds_train_dt <- predict(model_dt,rose_data)
+
+preds_train_tree <- ifelse(preds_train_dt[, 1] > preds_train_dt[, 2]&preds_train_dt[,1]>preds_train_dt[,3],"win" , ifelse(preds_train_dt[,2]>preds_train_dt[,1]&preds_train_dt[,2]>preds_train_dt[,3] ,"draw" , "loss"))
+
+confusionMatrix (preds_train_tree,rose_data$result)
+```
+##knn
+```{r}
+library(caret)
+model_knn <- knn3(result ~ . , rose_data, k = 12)
+preds_k <- predict(model_knn, test_data)
+preds_knn <- ifelse(preds_k[, 1] > preds_k[, 2]&preds_k[,1]>preds_k[,3],"win" , ifelse(preds_k[,2]>preds_k[,1]&preds_k[,2]>preds_k[,3] ,"draw" , "loss"))
+
+confusionMatrix(preds_knn, test_data$result)
+preds_train_k <- predict(model_knn, rose_data)
+
+preds_train_knn <- ifelse(preds_train_k[, 1] > preds_train_k[, 2]&preds_train_k[,1]>preds_train_k[,3],"win" , ifelse(preds_train_k[,2]>preds_train_k[,1]&preds_train_k[,2]>preds_train_k[,3] ,"draw" , "loss"))
+
+confusionMatrix(preds_train_knn,rose_data$result)
+```
+##bagged decision trees
+```{r}
+library(rpart)
+library(ipred)
+set.seed(1234)
+
+model_tree_bag <- bagging(result ~ . , data=rose_data, control = rpart.control(cp = 0.01, xval = 10))
+preds_tree_bag <- predict(model_tree_bag, test_data)
+
+confusionMatrix(preds_tree_bag, test_data$result)
+preds_train_tree_bag <- predict(model_tree_bag,rose_data)
+confusionMatrix(preds_train_tree_bag,rose_data$result)
+```
+##navie bayes
+```{r}
+library(e1071)
+model_nb<-naiveBayes(result~.,rose_data)
+preds_nb <- predict(model_nb, test_data)
+preds_train_nb<-predict(model_nb,rose_data)
+
+confusionMatrix(preds_nb, test_data$result)
+
+confusionMatrix(preds_train_nb, rose_data$result)
+```
+##nueral network
+```{r}
+library(neuralnet)
+library(mxnet)
+library(caret)
+set.seed(1234)
+intrain = createDataPartition(y = rose_data$result, p=0.7, list = F)
+train.x = data.matrix(rose_data[intrain, -128])
+train.y = rose_data[intrain, 128]
+test.x = data.matrix(rose_data[-intrain, -128])
+test.y = rose_data[-intrain, 128]
+
+mx.set.seed(0)
+Sys.time() -> start
+model <- mx.mlp(train.x, train.y, hidden_node=c(100), out_node=3, activation="tanh", out_activation="softmax",
+                 num.round=20, array.batch.size=100, learning.rate=0.07, momentum=0.9,
+                 eval.metric=mx.metric.accuracy)
+ Sys.time() -> end
+ paste(end - start)
+ dim(train.x)
+preds = predict(model, train.x)
+
+preds=t(preds)
+pred.label = ifelse(preds[,1]>preds[,2] | preds[,1]>preds[,3], 0, ifelse(preds[,2]>preds[,3] | preds[,2]>preds[,1],1,2))
+
+conf.mat = table(pred.label, train.y);conf.mat
+accuracy = sum(diag(conf.mat))/sum(conf.mat);accuracy
+precision = conf.mat[2,2]/sum(conf.mat[2,]);precision
+recall = conf.mat[2,2]/sum(conf.mat[,2]);recall
+
+table(test.y)
+```
+logistic
+```{r}
+library(glmnet)
+library(Matrix)
+
+reg <- model.matrix(result~., data = rose_data)
+reg1 <- model.matrix(test_data$result~., data = test_data)
+
+ lm = cv.glmnet(reg,rose_data$result,family = "multinomial",alpha =1)
+ lm$lambda.min
+ 
+ 
+log_reg<-glmnet(reg,rose_data$result,family = "multinomial",alpha =0,lambda =lm$lambda.min)
+preds_test_lr <- predict(log_reg, reg1,type = "class")
+preds_train_lr<-predict(log_reg, reg,type = "class")
+
+confusionMatrix(preds_test_lr, test_data$result)
+
+confusionMatrix(preds_train_lr, rose_data$result)
+
+```
+
+##bagging
+```{r}
+library(rpart)
+library(ipred)
+
+set.seed(1234)
+
+model_bag <- bagging(result ~ . , data=rose_data, control = rpart.control(cp = 0.01, xval = 10))
+preds_bag <- predict(model_tree_bag, test_data)
+
+confusionMatrix(preds_bag, test_data$result)
+preds_train_bag <- predict(model_bag,rose_data)
+confusionMatrix(preds_train_bag,rose_data$result)
+```
+
+
+
+##gbm
+```{r}
+rose_data$result <- as.numeric(rose_data$result)
+rose<-subset(rose_data,select=-c(result))
+
+test_data$result <- as.numeric(test_data$result)
+
+library(mlr)
+library(gbm)
+gbmGrid <-  expand.grid(interaction.depth = c(1, 3, 6, 9, 10),
+                    n.trees = 1500, 
+                    shrinkage = seq(.0005, .05,.005),
+                    n.minobsinnode = 10)
+model_gbm1<-train(result~.,rose_data,method="gbm",tuneGrid=gbmGrid)
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
